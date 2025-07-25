@@ -6,12 +6,13 @@ TGS files are gzip-compressed Lottie JSON animations.
 """
 
 import os
-import tempfile
+import io
+import webp
+import time
 from PIL import Image, ImageDraw
-from lottie import objects
-from lottie.exporters.cairo import export_png
 from lottie.parsers.tgs import parse_tgs
-
+from lottie.exporters.svg import export_svg
+from lottie.exporters.cairo import cairosvg
 
 class TGSToWebPConverter:
     """Converter class for TGS to WebP conversion with automatic timing preservation."""
@@ -37,41 +38,31 @@ class TGSToWebPConverter:
     
     def _render_lottie_frame(self, lottie_animation, frame_num: int, total_frames: int) -> Image.Image:
         """
-        Render a single frame from Lottie animation using the lottie library.
-        
-        Args:
-            lottie_animation: Lottie animation object
-            frame_num: Current frame number
-            total_frames: Total number of frames
-            
-        Returns:
-            PIL Image of the rendered frame
+        Render a single frame from Lottie animation directly to an in-memory buffer.
+        This is MUCH faster than writing to disk.
         """
-        try: 
-            # Create a temporary file for the frame
-            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_file:
-                temp_path = temp_file.name
-            
-            # Calculate the frame time based on the animation
-            frame_time = frame_num / self.fps
-            
-            # Export single frame as PNG using Cairo
-            export_png(
-                lottie_animation,
-                temp_path,
-                frame=frame_num
-            )
-            
-            # Load the generated PNG
-            if os.path.exists(temp_path):
-                img = Image.open(temp_path).convert('RGBA')
-                # Check for cusrrom width and hight and resize if any
-                if self.width != -1 and self.height != -1:
-                    img = img.resize((self.width, self.height), Image.LANCZOS)
-                os.unlink(temp_path)  # Clean up temp file
-                return img
-            else:
-                raise Exception("Frame export failed")
+        try:
+            # Step 1: Use io.StringIO to create a buffer for the SVG text data.
+            svg_text_buffer = io.StringIO()
+            export_svg(lottie_animation, svg_text_buffer, frame=frame_num)
+            svg_text = svg_text_buffer.getvalue()
+
+            # Step 2: Convert the SVG text (str) into binary data (bytes) for cairosvg.
+            svg_bytes = svg_text.encode('utf-8')
+
+            # Step 3: Convert the in-memory SVG bytes to in-memory PNG bytes.
+            png_buffer = io.BytesIO()
+            cairosvg.svg2png(bytestring=svg_bytes, write_to=png_buffer)
+            png_buffer.seek(0) # Rewind the buffer to the beginning
+
+            # Step 4: Load the PNG from the binary buffer into a PIL Image.
+            img = Image.open(png_buffer).convert('RGBA')
+
+            # Resize if needed
+            if self.width != -1 and self.height != -1:
+                img = img.resize((self.width, self.height), Image.LANCZOS)
+                
+            return img
                 
         except Exception as e:
             print(f"Warning: Lottie frame rendering failed, using fallback: {e}")
@@ -118,6 +109,7 @@ class TGSToWebPConverter:
             ValueError: If TGS file is invalid
             IOError: If output file cannot be written
         """
+        start_time = time.monotonic()
         if not os.path.exists(tgs_path):
             raise FileNotFoundError(f"TGS file not found: {tgs_path}")
         
@@ -135,7 +127,7 @@ class TGSToWebPConverter:
                 original_duration = original_total_frames / original_fps
                 
                 # Determine optimal output settings to preserve timing
-                max_frames = 60  # Performance limit
+                max_frames = 1000  # Performance limit
                 
                 if original_total_frames <= max_frames:
                     # For short animations, keep all frames and adjust FPS to maintain duration
@@ -171,25 +163,24 @@ class TGSToWebPConverter:
                 raise ValueError("No frames could be rendered from TGS file")
             
             # Calculate frame duration in milliseconds using the calculated FPS
-            frame_duration = int(1000 / self._calculated_fps)
             
             # Save as animated WebP
-            frames[0].save(
-                webp_path,
-                format='WebP',
-                save_all=True,
-                append_images=frames[1:],
-                duration=frame_duration,
-                loop=0,  # Infinite loop
-                quality=self.quality,
-                method=6  # Best quality method
+            webp.save_images(
+                frames, 
+                webp_path, 
+                fps=self._calculated_fps, 
+                quality=self.quality
             )
-            
+                        
             return True
             
         except Exception as e:
             raise IOError(f"Conversion failed: {e}")
-
+        
+        finally:
+            end_time = time.monotonic()
+            duration = end_time - start_time
+            print(f"⌛ Total time taken: {duration:.2f} seconds.")
 
 def convert_tgs_to_webp(tgs_path: str, webp_path: str, 
                        width: int = -1, height: int = -1, 
