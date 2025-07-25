@@ -14,8 +14,8 @@ The primary goal of this project is to provide a simple way to convert these ani
 - **🎨 Customizable Output**: Easily specify output resolution (`width`, `height`) and `quality`.
 - **💻 Dual Usage Mode**: Can be used as a command-line tool or imported as a module into your own Python projects.
 - **✌️ Two Flavors**:
-    1.  `tgs_to_webp.py`: **Performance-focused** version that limits animations to 60 frames to prevent high resource usage. Ideal for most stickers.
-    2.  `tgs_to_webp_no_frame_limits.py`: **Power-user** version that removes the 60-frame limit for extra-long animations. Use with caution!
+    1.  `tgs_to_webp.py`: **Performance-focused** version that limits animations to 180 frames to prevent high resource usage. Ideal for most stickers.
+    2.  `tgs_to_webp_no_frame_limits.py`: **Power-user** version that removes the 180-frame limit for extra-long animations. Use with caution!
 
 ---
 
@@ -126,7 +126,7 @@ converter.convert('sticker2.tgs', 'output2.webp')
 
 ## ⚠️ The "No Frame Limits" Version
 
-For animations that are longer than 60 frames, the standard `tgs_to_webp.py` will cap the output at 60 frames to save memory and CPU time. If you absolutely need to render every single frame of a long animation, you can use `tgs_to_webp_no_frame_limits.py`.
+For animations that are longer than 180 frames, the standard `tgs_to_webp.py` will cap the output at 180 frames to save memory and CPU time. If you absolutely need to render every single frame of a long animation, you can use `tgs_to_webp_no_frame_limits.py`.
 
 **🚨 Warning:** Converting animations with a very high frame count can be resource-intensive and may consume a lot of RAM and CPU. Use this version wisely!
 
