@@ -200,7 +200,6 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(
         description="Convert TGS (Telegram animated stickers) to animated WebP.",
-        # This helps in formatting the help text nicely
         formatter_class=argparse.RawTextHelpFormatter
     )
 
@@ -215,11 +214,9 @@ if __name__ == "__main__":
     parser.add_argument("--fps", type=int, default=30,
                         help="Frames per second. \n(Note: This is ignored by default unless you disable timing preservation).")
 
-    # This is a cool way to handle a boolean flag
     parser.add_argument("--no-preserve-timing", action="store_false", dest="preserve_timing",
                         help="Disable automatic timing preservation to use the manual FPS value.")
 
-    # Let argparse handle the arguments
     args = parser.parse_args()
 
     # Call the main function with the parsed arguments
