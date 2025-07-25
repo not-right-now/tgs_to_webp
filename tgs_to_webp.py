@@ -39,7 +39,6 @@ class TGSToWebPConverter:
     def _render_lottie_frame(self, lottie_animation, frame_num: int, total_frames: int) -> Image.Image:
         """
         Render a single frame from Lottie animation directly to an in-memory buffer.
-        This is MUCH faster than writing to disk.
         """
         try:
             # Step 1: Use io.StringIO to create a buffer for the SVG text data.
