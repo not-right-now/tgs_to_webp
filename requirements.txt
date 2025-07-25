@@ -2,4 +2,3 @@ cairosvg>=2.8.2
 lottie>=0.7.2
 pillow>=11.3.0
 pycairo>=1.28.0
-webp>=0.1.5
