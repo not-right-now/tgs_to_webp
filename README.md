@@ -8,16 +8,14 @@ The primary goal of this project is to provide a simple way to convert these ani
 
 ## 🚀 Features
 
-- **😋 Easy Conversion**: Convert TGS to animated WebP with a single command or function call.
-- **🧠 Smart Timing Preservation**: Automatically adjusts FPS to match the original animation's duration.
+- **Easy Conversion**: Convert TGS to animated WebP with a single command or function call.
+- **🧠 Smart Timing Preservation**: Automatically adjusts FPS to match the original animation's duration. This is the default and recommended mode!
 - **⚙️ Manual Control**: Option to disable automatic timing and set a manual FPS for full control.
-- **📦 Intelligent File Size Compression**: A special version of the script automatically adjusts quality and frame count to meet a file size target (e.g., under 500KB).
 - **🎨 Customizable Output**: Easily specify output resolution (`width`, `height`) and `quality`.
 - **💻 Dual Usage Mode**: Can be used as a command-line tool or imported as a module into your own Python projects.
-- **✌️ Three Flavors**:
+- **✌️ Two Flavors**:
     1.  `tgs_to_webp.py`: **Performance-focused** version that limits animations to 180 frames to prevent high resource usage. Ideal for most stickers.
     2.  `tgs_to_webp_no_frame_limits.py`: **Power-user** version that removes the 180-frame limit for extra-long animations. Use with caution!
-    3.  `tgs_to_webp_with_file_size_restriction.py`: **Size-focused** version that intelligently compresses the output to stay under a specific file size cap. Perfect for platforms with strict file size limits.
 
 ---
 
@@ -65,7 +63,7 @@ You can use this tool directly from your terminal or import it into your Python 
 
 ### As a Command-Line Tool
 
-This is the quickest way to convert a single file. The arguments are the same for all script versions.
+This is the quickest way to convert a single file. The arguments are the same for both `tgs_to_webp.py` and `tgs_to_webp_no_frame_limits.py`.
 
 **Basic Usage:**
 ```bash
@@ -81,8 +79,8 @@ python tgs_to_webp.py path/to/your/sticker.tgs path/to/your/output.webp
 | `--width`             | Output width in pixels.                                                                                 | `Original` |
 | `--height`            | Output height in pixels.                                                                                | `Original` |
 | `--quality`           | WebP quality (0-100). Higher is better.                                                                 | `80`       |
-| `--fps`               | Frames per second. **Ignored by default** in timing-preserving scripts.                                 | `30`       |
-| `--no-preserve-timing`| (Only in `tgs_to_webp.py`) A flag to disable automatic timing preservation and use the manual `--fps` value instead. | `False`    |
+| `--fps`               | Frames per second. **Ignored by default** unless you use the `--no-preserve-timing` flag.               | `30`       |
+| `--no-preserve-timing`| A flag to disable automatic timing preservation and use the manual `--fps` value instead.                 | `False`    |
 
 **Example with custom settings:**
 ```bash
@@ -94,6 +92,7 @@ python tgs_to_webp.py "demo_inp/AnimatedSticker.tgs" "demo_out/custom.webp" --wi
 Import the converter into your project for more programmatic control.
 
 **Simple Usage (Recommended):**
+The `convert_tgs_to_webp` function is a simple one-liner.
 ```python
 from tgs_to_webp import convert_tgs_to_webp
 
@@ -125,41 +124,17 @@ converter.convert('sticker2.tgs', 'output2.webp')
 
 ---
 
-## 📦 The "File Size Restricted" Version
-
-Do you need your final WebP file to be under a certain size (e.g., 500KB)? The `tgs_to_webp_with_file_size_restriction.py` script is your solution! It uses a smart optimization algorithm to find the best combination of frame count and quality to meet a target file size.
-
-**🚨 Warning:** This process can be slower than the other scripts because it has to pre-render all frames and then run multiple compression tests to find the optimal result.
-
-To use it, simply point to the correct script file:
-
-**Command-Line:**
-```bash
-python tgs_to_webp_with_file_size_restriction.py your_sticker.tgs your_output.webp
-```
-
-**Python Module:**
-```python
-# Import from the size-restricted script
-from tgs_to_webp_with_file_size_restriction import convert_tgs_to_webp
-
-# The rest of your code remains the same!
-success = convert_tgs_to_webp('animation.tgs', 'output_under_500kb.webp')
-```
-
----
-
 ## ⚠️ The "No Frame Limits" Version
 
-For animations that are longer than 180 frames, the standard `tgs_to_webp.py` will cap the output to save memory and CPU time. If you absolutely need to render every single frame of a long animation, you can use `tgs_to_webp_no_frame_limits.py`.
+For animations that are longer than 180 frames, the standard `tgs_to_webp.py` will cap the output at 180 frames to save memory and CPU time. If you absolutely need to render every single frame of a long animation, you can use `tgs_to_webp_no_frame_limits.py`.
 
 **🚨 Warning:** Converting animations with a very high frame count can be resource-intensive and may consume a lot of RAM and CPU. Use this version wisely!
 
-To use it, simply change your script file or import statement:
+To use it, simply change your import statement:
 
 ```python
 # Instead of from tgs_to_webp import ...
-from tgs_to_webp_no_frame_limits import convert_tgs_to_webp
+from tgs_to_webp_no_frame_limits import convert_tgs_to_webp, TGSToWebPConverter
 
 # The rest of your code remains the same!
 success = convert_tgs_to_webp('long_animation.tgs', 'long_output.webp')
