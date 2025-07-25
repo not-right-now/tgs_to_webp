@@ -8,6 +8,7 @@ TGS files are gzip-compressed Lottie JSON animations.
 import os
 import io
 import webp
+import time
 from PIL import Image, ImageDraw
 from lottie.exporters.svg import export_svg
 from lottie.parsers.tgs import parse_tgs
@@ -108,6 +109,8 @@ class TGSToWebPConverter:
             ValueError: If TGS file is invalid
             IOError: If output file cannot be written
         """
+        start_time = time.monotonic()
+        
         if not os.path.exists(tgs_path):
             raise FileNotFoundError(f"TGS file not found: {tgs_path}")
         
@@ -151,6 +154,11 @@ class TGSToWebPConverter:
             
         except Exception as e:
             raise IOError(f"Conversion failed: {e}")
+        
+        finally:
+            end_time = time.monotonic()
+            duration = end_time - start_time
+            print(f"⌛ Total time taken: {duration:.2f} seconds.")
 
 
 def convert_tgs_to_webp(tgs_path: str, webp_path: str, 
