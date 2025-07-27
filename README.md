@@ -27,7 +27,7 @@ Before you can use the converter, you'll need to set up your environment.
 
 ### 1. System Dependencies (Cairo)
 
-This tool uses `lottie`, which relies on the Cairo graphics library to render animation frames. You'll need to install it on your system first.
+This tool uses `rlottie_python`, which relies on the Cairo graphics library to render animation frames. You'll need to install it on your system first.
 
 -   **On Fedora (and other RHEL-based systems):**
     ```bash
