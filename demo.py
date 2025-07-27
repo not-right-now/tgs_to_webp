@@ -8,7 +8,6 @@ the conversion process and results.
 
 import shutil
 from tgs_to_webp import convert_tgs_to_webp, TGSToWebPConverter
-from lottie.parsers.tgs import parse_tgs
 from PIL import Image
 import os
 import glob
