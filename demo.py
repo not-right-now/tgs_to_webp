@@ -12,17 +12,18 @@ from PIL import Image
 import os
 import glob
 import time
+import rlottie_python as rlottie
+
 
 def analyze_tgs_file(file_path):
     """Analyze a TGS file and return detailed information."""
     try:
         print(f"    📁 Analyzing: {os.path.basename(file_path)}")
         
-        with open(file_path, 'rb') as f:
-            lottie_animation = parse_tgs(f)
+        lottie_animation = rlottie.LottieAnimation.from_tgs(file_path)
         
-        total_frames = int(lottie_animation.out_point - lottie_animation.in_point)
-        fps = lottie_animation.frame_rate
+        total_frames = lottie_animation.lottie_animation_get_totalframe()
+        fps = lottie_animation.lottie_animation_get_framerate()
         duration = total_frames / fps
         
         print(f"    ⏱️  Original: {total_frames} frames at {fps} FPS")
