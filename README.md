@@ -35,7 +35,7 @@ This tool uses `lottie`, which relies on the Cairo graphics library to render an
     ```
 -   **On Debian/Ubuntu:**
     ```bash
-    sudo apt-get install libcairo2-dev pkg-config python3-dev
+    sudo apt-get install libcairo2-dev pkg-config python3-dev gcc
     ```
 -   **On macOS (using Homebrew):**
     ```bash
@@ -50,7 +50,33 @@ git clone https://github.com/not-right-now/tgs_to_webp.git
 cd tgs_to_webp
 ```
 
-### 3. Install Python Packages
+### 3. Create and Activate a Virtual Environment
+
+It's highly recommended to use a virtual environment to keep project dependencies isolated.
+
+1.  **Create the environment** (run this inside the project folder):
+    ```bash
+    python3 -m venv venv
+    ```
+
+2.  **Activate the environment**:
+    -   **On macOS and Linux:**
+        ```bash
+        source venv/bin/activate
+        ```
+    -   **On Windows (Command Prompt):**
+        ```bash
+        venv\Scripts\activate.bat
+        ```
+    -   **On Windows (PowerShell):**
+        ```powershell
+        venv\Scripts\Activate.ps1
+        ```
+    > You will know the environment is active when you see `(venv)` at the beginning of your command prompt.
+
+
+
+### 4. Install Python Packages
 
 Install the required Python libraries using the `requirements.txt` file:
 ```bash

@@ -6,13 +6,10 @@ TGS files are gzip-compressed Lottie JSON animations.
 """
 
 import os
-import io
 import webp
 import time
 from PIL import Image, ImageDraw
-from lottie.exporters.svg import export_svg
-from lottie.parsers.tgs import parse_tgs
-from lottie.exporters.cairo import cairosvg
+import rlottie_python as rlottie
 
 
 class TGSToWebPConverter:
@@ -37,51 +34,39 @@ class TGSToWebPConverter:
     
 
     
-    def _render_lottie_frame(self, lottie_animation, frame_num: int, total_frames: int) -> Image.Image:
-        """
-        Render a single frame from Lottie animation directly to an in-memory buffer.
-        """
-        try:
-            # Step 1: Use io.StringIO to create a buffer for the SVG text data.
-            svg_text_buffer = io.StringIO()
-            export_svg(lottie_animation, svg_text_buffer, frame=frame_num)
-            svg_text = svg_text_buffer.getvalue()
+    def _render_lottie_frame(self, lottie_animation, frame_num: int) -> Image.Image:
+            """
+            Renders a single frame from a Lottie animation using the correct wrapper method.
+            """
+            try:
+                # This returns a ready-to-use PIL Image object
+                img = lottie_animation.render_pillow_frame(frame_num=frame_num)
 
-            # Step 2: Convert the SVG text (str) into binary data (bytes) for cairosvg.
-            svg_bytes = svg_text.encode('utf-8')
-
-            # Step 3: Convert the in-memory SVG bytes to in-memory PNG bytes.
-            png_buffer = io.BytesIO()
-            cairosvg.svg2png(bytestring=svg_bytes, write_to=png_buffer)
-            png_buffer.seek(0) # Rewind the buffer to the beginning
-
-            # Step 4: Load the PNG from the binary buffer into a PIL Image.
-            img = Image.open(png_buffer).convert('RGBA')
-
-            # Resize if needed
-            if self.width != -1 and self.height != -1:
-                img = img.resize((self.width, self.height), Image.LANCZOS)
-                
-            return img
-                
-        except Exception as e:
-            print(f"Warning: Lottie frame rendering failed, using fallback: {e}")
-            return self._create_fallback_frame(lottie_animation, frame_num, total_frames)
+                # Resize if needed
+                if self.width != -1 and self.height != -1:
+                    img = img.resize((self.width, self.height), Image.LANCZOS)
+                    
+                return img
+                    
+            except Exception as e:
+                # The exception block calls the fallback function
+                print(f"Warning: Rlottie frame rendering failed, using fallback: {e}")
+                fallback_width = self.width if self.width != -1 else 512
+                fallback_height = self.height if self.height != -1 else 512
+                total_frames = lottie_animation.lottie_animation_get_totalframe()
+                return self._create_fallback_frame(frame_num, total_frames, width=fallback_width, height=fallback_height)
     
-    def _create_fallback_frame(self, lottie_animation, frame_num: int, total_frames: int) -> Image.Image: #It will create a dummy frame to prevent failure
+    def _create_fallback_frame(self, frame_num: int, total_frames: int, width: int = 512, height: int = 512) -> Image.Image:
         """Create a simple fallback frame when Lottie rendering fails."""
-        # Create a simple animated frame with PIL 
-        fallback_width = self.width if self.width != -1 else lottie_animation.width
-        fallback_height = self.height if self.height != -1 else lottie_animation.height
-        img = Image.new('RGBA', (fallback_width, fallback_height), (0, 0, 0, 0))
+        img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
         
         # Calculate animation progress
         progress = frame_num / max(total_frames - 1, 1)
         
         # Create a simple animated element
-        center_x = int(fallback_width * (0.2 + 0.6 * progress))
-        center_y = int(fallback_height * 0.5)
+        center_x = int(width * (0.2 + 0.6 * progress))
+        center_y = int(height * 0.5)
         radius = int(30 + 20 * abs(0.5 - progress) * 2)
         
         # Draw a circle
@@ -115,13 +100,12 @@ class TGSToWebPConverter:
             raise FileNotFoundError(f"TGS file not found: {tgs_path}")
         
         try:
-            # Parse TGS file using lottie library
-            with open(tgs_path, 'rb') as f:
-                lottie_animation = parse_tgs(f)
+            # Use the rlottie loader
+            lottie_animation = rlottie.LottieAnimation.from_tgs(tgs_path)
             
             # Get animation properties
-            total_frames = int(lottie_animation.out_point - lottie_animation.in_point) if lottie_animation else 30
-            original_fps = lottie_animation.frame_rate if lottie_animation else 30.0
+            total_frames = lottie_animation.lottie_animation_get_totalframe()
+            original_fps = lottie_animation.lottie_animation_get_framerate()
             
             if self.preserve_timing: # Set FPS to the original tgs file FPS
                 original_duration = total_frames / original_fps
@@ -133,10 +117,8 @@ class TGSToWebPConverter:
             
             # Render all frames
             frames = []
-            for i in range(total_frames):
-                # Map our frame index to the original animation frame range
-                frame = i
-                frame = self._render_lottie_frame(lottie_animation, frame, total_frames)
+            for frame_index in range(total_frames):
+                frame = self._render_lottie_frame(lottie_animation, frame_index)
                 frames.append(frame)
             
             if not frames:
