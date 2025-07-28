@@ -139,9 +139,8 @@ class TGSToWebPConverter:
             # Selecting frames from total frames
             if total_frames > 1:
                 for i in range(total_frames):
-                    frame_index = (original_total_frames - 1) * i / (total_frames - 1)
-                    original_frame = int(frame_index)
-                    frame = self._render_lottie_frame(lottie_animation, original_frame)
+                    frame_index = int((original_total_frames - 1) * i / (total_frames - 1))
+                    frame = self._render_lottie_frame(lottie_animation, frame_index)
                     frames.append(frame)
             elif total_frames == 1:
                 frame = self._render_lottie_frame(lottie_animation, 0)
@@ -149,7 +148,13 @@ class TGSToWebPConverter:
             
             if not frames:
                 raise ValueError("No frames could be rendered from TGS file")
-                        
+            
+            
+            # Ensure output directory exists
+            output_dir = os.path.dirname(webp_path)
+            if output_dir and not os.path.exists(output_dir):
+                os.makedirs(output_dir, exist_ok=True)
+                
             # Save as animated WebP
             webp.save_images(
                 frames, 

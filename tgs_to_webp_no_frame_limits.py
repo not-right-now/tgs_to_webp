@@ -123,7 +123,13 @@ class TGSToWebPConverter:
             
             if not frames:
                 raise ValueError("No frames could be rendered from TGS file")
-                        
+
+            # Ensure output directory exists
+            output_dir = os.path.dirname(webp_path)
+            if output_dir and not os.path.exists(output_dir):
+                os.makedirs(output_dir, exist_ok=True)
+
+                    
             # Save as animated WebP
             webp.save_images(
                 frames, 
