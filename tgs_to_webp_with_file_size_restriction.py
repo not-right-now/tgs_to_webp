@@ -233,7 +233,7 @@ class TGSToWebPConverter:
         
         # --- Step 1: start searching for best size ---
 
-        print(f"Aiming for a file size under {SIZE_CAP_KB}KB.")
+        print(f"📢 Tgs file found, aiming for a file size under {SIZE_CAP_KB}KB.")
 
         # Stage A: Try with max frames at default quality
         print(f"[*] Stage A: Testing with {len(final_frames)} frames @ Q={final_quality}...")
@@ -313,7 +313,7 @@ class TGSToWebPConverter:
         finally:
             end_time = time.monotonic()
             duration = end_time - start_time
-            print(f"⌛ Total time taken: {duration:.2f} seconds.")
+            print(f"⌛ Total time taken: {duration:.2f} seconds.\n")
 
 
 
