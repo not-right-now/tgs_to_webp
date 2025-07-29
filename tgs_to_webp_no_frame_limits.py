@@ -43,7 +43,7 @@ class TGSToWebPConverter:
                 img = lottie_animation.render_pillow_frame(frame_num=frame_num)
 
                 # Resize if needed
-                if self.width != -1 and self.height != -1:
+                if (self.width != -1 and self.height != -1) and (img.size != (self.width, self.height)):
                     img = img.resize((self.width, self.height), Image.LANCZOS)
                     
                 return img
