@@ -78,7 +78,8 @@ class TGSToWebPConverter:
         try:
             # This returns a PIL Image object
             pil_image = lottie_animation.render_pillow_frame(frame_num=frame_num)
-            # Resize if needed
+            
+            # ============ Resize if needed =============
 
             orig_w, orig_h = pil_image.size
             target_w = self.width if self.width != -1 else orig_w
