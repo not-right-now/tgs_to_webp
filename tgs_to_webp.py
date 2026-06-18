@@ -7,68 +7,51 @@ TGS files are gzip-compressed Lottie JSON animations.
 
 import os
 import math
+import logging
+import io
 import webp
 import time
 from PIL import Image, ImageDraw
 import rlottie_python as rlottie
 
+logger = logging.getLogger(__name__)
+
 class TGSToWebPConverter:
     """Converter class for TGS to WebP conversion with automatic timing preservation."""
     
-    def __init__(self, width: int = -1, height: int = -1, quality: int = 80,
+    def __init__(self, width: int = -1, height: int = -1, quality: int = 40,
+                frame_cap: bool = True, max_frames: int = 30, max_size: int = None,
                 keep_aspect: bool = True, allow_upscale: bool = True, pad: bool = True,
-                fps: float = 30.0, preserve_timing: bool = True):
+                fps: float = 30.0, preserve_timing: bool = True, compress_faster: bool = False):
         """
         Initialize the converter.
-        
-        Args:
-            width: Output width in pixels
-            height: Output height in pixels
-            quality: WebP quality (0-100)
-            keep_aspect: Preserve original aspect ratio (default True).
-            allow_upscale: Allow enlarging smaller sources to meet target (default True).
-            pad: When keep_aspect=True, pad with transparent canvas to fill target if True (default).
-                If False, use cover+center-crop mode instead.
-            fps: Target frames per second (ignored if preserve_timing=True)
-            preserve_timing: If True, automatically adjusts FPS to preserve original animation timing
         """
         self.width = width
         self.height = height
         self.quality = quality
+        self.frame_cap = frame_cap
+        self.max_frames = max_frames
+        self.max_size = max_size
         self.keep_aspect = keep_aspect
         self.allow_upscale = allow_upscale
         self.pad = pad
         self.fps = fps
         self.preserve_timing = preserve_timing
+        self.compress_faster = compress_faster
     
     @staticmethod
-    def _select_indices(total_frames: int, original_duration: float, count: int) -> list[int]:
+    def _select_indices(total_frames: int, count: int) -> list[int]:
         """
         Selects a specific count of frame indices from a total number of frames.
         """
-        if count <= 0:
+        if total_frames <= 0 or count <= 0:
             selected_indices = []
         elif count == 1:
             selected_indices = [0]
         elif count >= total_frames:
             selected_indices = list(range(total_frames))
         else:
-            # Calculate target timestamps
-            d = max(original_duration, 1e-6)
-            targets = [i * (d / (count - 1)) for i in range(count)]
-            # Map timestamps back to frame indices
-            selected_indices = []
-            for t in targets:
-                idx = int(round((t / d) * (total_frames - 1)))
-                if idx < 0: idx = 0
-                if idx > total_frames - 1: idx = total_frames - 1
-                # avoid duplicates by ensuring monotonic increasing indices
-                if not selected_indices or idx > selected_indices[-1]:
-                    selected_indices.append(idx)
-            # If we lost some frames due to removing duplicates, fill by evenly spaced integer indices
-            if len(selected_indices) < count:
-                selected_indices = [int(round(i * (total_frames - 1) / (count - 1))) for i in range(count)]
-
+            selected_indices = [round(i * (total_frames - 1) / (count - 1)) for i in range(count)]
         return selected_indices
     
     def _render_lottie_frame(self, lottie_animation, frame_num: int) -> Image.Image:
@@ -155,7 +138,7 @@ class TGSToWebPConverter:
                 
         except Exception as e:
             # The exception block calls the fallback function
-            print(f"Warning: Rlottie frame rendering failed, using fallback: {e}")
+            logger.warning("Rlottie frame rendering failed, using fallback: %s", e)
             fallback_width = self.width if self.width != -1 else 512
             fallback_height = self.height if self.height != -1 else 512
             total_frames = lottie_animation.lottie_animation_get_totalframe()
@@ -183,10 +166,141 @@ class TGSToWebPConverter:
         return img
     
 
+    def _create_webp_buffer(self, frames: list[Image.Image], quality: int, fps: float):
+        if not frames:
+            raise ValueError("No frames provided to create WebP buffer")
+        if quality <= 0 or quality > 100:
+            raise ValueError("Quality must be between 1 and 100")
+        if fps <= 0:
+            raise ValueError("FPS must be positive")
+
+        buf = io.BytesIO()  # Create empty buffer
+
+        try:
+            # Convert PIL images to WebPPicture objects
+            pics = [webp.WebPPicture.from_pil(img) for img in frames]
+            
+            # Initialize Encoder Options and Encoder
+            enc_opts = webp.WebPAnimEncoderOptions.new()
+            enc = webp.WebPAnimEncoder.new(pics[0].ptr.width, pics[0].ptr.height, enc_opts)
+            
+            # Set up quality config
+            config = webp.WebPConfig.new(quality=quality)
+            
+            # Encode each frame with its calculated timestamp
+            for i, pic in enumerate(pics):
+                t = round((i * 1000) / fps)
+                enc.encode_frame(pic, t, config)
+            
+            # Assemble the final animated data
+            end_t = round((len(pics) * 1000) / fps)
+            anim_data = enc.assemble(end_t)
+            
+            # Write the raw bytes to buffer
+            buf.write(anim_data.buffer())
+            
+            buf.seek(0)
+            return buf
+            
+        except Exception as e:
+            raise RuntimeError(f"Failed to create WebP buffer: {e}") from e
+
+    # Helper to select a subset of frames evenly
+    @staticmethod
+    def select_frames(frames: list[Image.Image], count: int) -> list[Image.Image]:
+        """
+        Returns a list of frames selected evenly from the given frames.
+        """
+        if count <= 0 or len(frames) <= 0:
+            return []
+        if count == 1:
+            return [frames[0]]
+        if count >= len(frames):
+            return frames
+        
+        indices = [round(i * (len(frames) - 1) / (count - 1)) for i in range(count)]
+        return [frames[i] for i in indices]
+
+    def _binary_search(self, frames: list[Image.Image], target_range: tuple, search_space: tuple, type: str) -> tuple[int, int, io.BytesIO] | tuple[None, None, None]:
+        """
+        Performs a binary search on the given range of frames or quality to find a value that results
+        in an size within target range.
+        It uses helper functions based on the 'type' parameter to evaluate the size for a given value in search_space.
+
+        Args:
+            frames: List of frames to search on.
+            target_range: A (min, max) tuple for the desired file size range (inclusive).
+            search_space: A (min, max) tuple for the frame count or quality range to search in (inclusive).
+            type: Type of search to be performed. It can be 'frames' or 'quality'.
+        Returns:
+            A tuple of (best_value, best_size, best_buffer). Returns (None, None, None) if no suitable value is found.
+        """
+
+        # helper to get size for specific number of frames from given a list of frames
+        def size_4_these_frames(count: int) -> tuple[io.BytesIO, int]:
+            """
+            Creates webp buffer by selecting a targetted number of frames evenly and returns the buffer and its size in bytes.
+            It uses the 'self.final_quality' and 'frames' passed to _binary_search function.
+            """
+            frames_to_test = self.select_frames(frames, count)
+            _fps = len(frames_to_test) / self.original_duration if self.preserve_timing else self.fps
+            
+            buffer = self._create_webp_buffer(frames_to_test, self.final_quality, _fps)
+            
+            return buffer, buffer.getbuffer().nbytes
+        
+        # helper to get size for quality
+        def size_4_this_quality(quality: int) -> tuple[io.BytesIO, int]:
+            """
+            Creates webp buffer using given quality and returns the buffer and its size in bytes.
+            It uses the 'frames' passed to _binary_search function.
+            """
+            _fps = len(frames) / self.original_duration if self.preserve_timing else self.fps
+
+            buffer = self._create_webp_buffer(frames, quality, _fps)
+            
+            return buffer, buffer.getbuffer().nbytes
+
+        # search boundaries and best found value
+        low, high = search_space
+        best_value = None
+        best_size = float('inf')
+        best_buffer = None
+
+        low, high = int(low), int(high)
+        if low > high:
+            return None, None, None
+
+        while low <= high:
+            mid = (low + high) // 2
+
+            # call either size_4_these_frames or size_4_this_quality
+            evaluator_func = size_4_these_frames if type == "frames" else size_4_this_quality
+            buffer, current_size = evaluator_func(mid)
+            # size is under the range
+            if target_range[0] <= current_size <= target_range[1]:
+                return mid, current_size, buffer
+            # size is lower than range minimum, not what we want but can be used if we dont find any under the range
+            elif current_size < target_range[0]:
+                best_value = mid 
+                best_size = current_size
+                best_buffer = buffer
+                low = mid + 1
+            # size is heigher than range maximum
+            else:
+                high = mid - 1
+        
+        # return the best frames/quality and best size if no ones fall in the size range after all iterations
+        if best_value is not None and best_buffer is not None:
+            return best_value, best_size, best_buffer
+        # if size is heigher than range max for all values
+        return None, None, None
     
+
+
     def convert(self, tgs_path: str, webp_path: str) -> bool:
         """
-        Convert TGS file to animated WebP.
+        Main function to handle the conversion logic
         
         Args:
             tgs_path: Path to input TGS file
@@ -197,93 +311,172 @@ class TGSToWebPConverter:
             
         Raises:
             FileNotFoundError: If TGS file doesn't exist
-            ValueError: If TGS file is invalid
+            ValueError: If failed to extract frames or create WebP buffer
             IOError: If output file cannot be written
         """
         start_time = time.monotonic()
         if not os.path.exists(tgs_path):
             raise FileNotFoundError(f"TGS file not found: {tgs_path}")
-        
-        try:
-            # Use the rlottie loader
-            lottie_animation = rlottie.LottieAnimation.from_tgs(tgs_path)
-            
-            max_frames = 180  # Performance limit
 
-            # Get animation properties
-            original_total_frames = lottie_animation.lottie_animation_get_totalframe()
-            if not original_total_frames:
-                print("The TGS appearss to have no frame or corrupted.")
-                return False
-            
-            original_fps = float(lottie_animation.lottie_animation_get_framerate())
-            # Calculate original duration in seconds
-            original_duration = original_total_frames / max(original_fps, 1.0)
+        # ========= Parse and Render Original Frames & collect metadata ==========
 
-            # select which frames to render
-            indices_to_render = self._select_indices(original_total_frames, original_duration, max_frames)
-            total_frames = len(indices_to_render)
+        try: # Use the rlottie loader
+            with rlottie.LottieAnimation.from_tgs(tgs_path) as lottie_animation:
 
-            if self.preserve_timing:
-                output_fps = total_frames / original_duration
-                # Logging details 
-                if original_total_frames <= max_frames:
-                    print(f"Preserving all {total_frames} frames, adjusting FPS to {output_fps:.1f} to maintain {original_duration:.2f}s duration")
-                else:
-                    print(f"Limiting to a total of {max_frames} frames, adjusting FPS to {output_fps:.1f} to maintain {original_duration:.2f}s duration")
+                # Fetch metadata
+                original_frame_count = lottie_animation.lottie_animation_get_totalframe()
+                if not original_frame_count:
+                    raise ValueError("The TGS appears to have no frame or corrupted.")
                 
-            else:
-                # Use user-specified FPS
-                output_fps = self.fps
-                if original_total_frames <= max_frames:
-                    print(f"Preserving all {total_frames} frames, using specified FPS of {self.fps}, which will alter the final duration.")
-                else:
-                    print(f"Limiting to a total of {max_frames} frames, using specified FPS of {self.fps}, which will alter the final duration.")
-            
-            
-            if output_fps <= 0.0: output_fps = 1 # Avoid zero
+                original_fps = float(lottie_animation.lottie_animation_get_framerate())
+                if original_fps == 0:
+                    original_fps = 1.0
+                
+                self.original_duration = original_frame_count / original_fps
 
-            # Render all selected frames
-            frames = []
-            for frame_index in indices_to_render:
-                frame = self._render_lottie_frame(lottie_animation, frame_index)
-                frames.append(frame)
+                # ===================== Calculate final frames =====================
+
+                # Frames cap
+                max_frames = self.max_frames if self.frame_cap else original_frame_count  
+
+                # select which frames to render
+                indices_to_render = self._select_indices(original_frame_count, max_frames)
+
+                # Render all selected frames
+                try:
+                    final_frames = [self._render_lottie_frame(lottie_animation, i) for i in indices_to_render]
+                except Exception as e:
+                    raise ValueError(f"Failed to extract frames from video: {e}")
+
+                if not final_frames:
+                    raise ValueError("No frames could be rendered from TGS file")
+
+        except Exception as e:
+                logger.error("from_tgs() failed: %s", e)
+                raise
+        
+        capped_frames = len(final_frames)
+
+        # Calculate final FPS based on whether user wants to preserve timing or not.
+        if self.preserve_timing:
+            logger.info("Preserving original duration")
+        else:
+            logger.info("Original duration will not be preserved. Using custom FPS: %s", self.fps)
+        
+
+        # ===================== Create buffer with max frames at given quality =====================
+        self.final_quality = self.quality
+        _fps = capped_frames / self.original_duration if self.preserve_timing else self.fps
+        if _fps <= 0.0: _fps = 1 # Avoid zero
+        logger.info("Started processing... Frames: %s, Quality: %s", capped_frames, self.final_quality)
+        buffer = self._create_webp_buffer(final_frames, self.final_quality, _fps)
+
+
+        # ================== if compression is enabled search for best frames and quality ====================
+        compress = self.max_size is not None
+
+        if compress:
+            size_cap_kb = self.max_size
+                
+            if self.compress_faster:
+                size_target_range = (int(size_cap_kb * 0.75 * 1024) , size_cap_kb * 1024)  # Target [75% of max_size, max_size]
+            else:
+                size_target_range = (size_cap_kb * 1024, size_cap_kb * 1024)  # Target [max_size, max_size]
             
-            if not frames:
-                raise ValueError("No frames could be rendered from TGS file")
+            logger.info("Aiming for a file size under %sKB.", size_cap_kb)
+
+            current_size = buffer.getbuffer().nbytes
+
             
-            
+            if current_size <= size_target_range[1]: # If it's already under the size limit, no need to compress
+                logger.info("Success! Size is %.1fKB. No further optimization needed.", current_size / 1024)
+            else:
+                logger.info("Too big (%.1fKB). Starting advanced optimization...", current_size / 1024)
+                
+                # Define search ranges
+                frame_range_1 = (max(1, capped_frames //2), capped_frames)
+                frame_range_2 = (1, max(1, capped_frames // 2))
+                fallback_frame_count = max(1, capped_frames // 2)
+
+                quality_range_1 = (max(1, int(self.quality / 2)), self.quality)
+                quality_range_2 = (1, max(1, int(self.quality / 2)))
+                fallback_quality = max(1, int(self.quality/2))
+
+                # --- Start the search  ---
+
+                # Stage A: Binary search on frame_range1
+                logger.info("Stage A: Searching frame count in [%s, %s] @ Q=%s...", frame_range_1[0], frame_range_1[1], self.final_quality)
+                best_f, best_s, best_buff = self._binary_search(final_frames, size_target_range, frame_range_1, 'frame')
+
+                if best_f:
+                    buffer = best_buff
+                    logger.info("Found solution in Stage A: %s frames, size %.1fKB.", best_f, best_s / 1024)
+                else:
+                    # Stage B: Binary search on quality_range_1
+                    logger.info("Stage B: Too big. Fixing at %s frames. Searching quality in [%s, %s}...", fallback_frame_count, quality_range_1[0], quality_range_1[1])
+                    final_frames = self.select_frames(final_frames, fallback_frame_count) # update final frames
+                    best_q, best_s, best_buff = self._binary_search(final_frames, size_target_range, quality_range_1, 'quality')
+
+                    if best_q:
+                        buffer = best_buff
+                        logger.info("Found solution in Stage B: Q=%s, size %.1fKB.", best_q, best_s / 1024)
+                    else:
+                        # Stage C: Binary search on frame_range_2
+                        logger.info("Stage C: Still too big. Fixing quality at %s. Searching frames in [%s, %s]...", fallback_quality, frame_range_2[0], frame_range_2[1])
+                        self.final_quality = fallback_quality # update global final quality (binary search uses this, so needs to be updated)
+                        best_f, best_s, best_buff = self._binary_search(final_frames, size_target_range, frame_range_2, 'frame')
+                        
+                        if best_f:
+                            buffer = best_buff
+                            logger.info("Found solution in Stage C: %s frames, size %.1fKB.", best_f, best_s / 1024)
+                        else:
+                            # Stage D: Binary search on quality_range_2
+                            logger.info("Stage D: Last resort! Fixing at %s frame. Searching quality in [%s, %s]...", frame_range_2[0], quality_range_2[0], quality_range_2[1])
+                            final_frames = self.select_frames(final_frames, frame_range_2[0]) # update final frames
+                            best_q, best_s, best_buff = self._binary_search(final_frames, size_target_range, quality_range_2, 'quality')
+                            
+                            if best_q:
+                                buffer = best_buff
+                                logger.info("Found solution in Stage D: Q=%s, size %.1fKB.", best_q, best_s / 1024)
+                            else:
+                                # If it still fails, log error and return
+                                logger.error("Could not produce a WebP file under the size limit after all optimizations.")
+                                return False
+
+        # ========== Save the webp file =========
+        try:  
             # Ensure output directory exists
             output_dir = os.path.dirname(webp_path)
             if output_dir and not os.path.exists(output_dir):
                 os.makedirs(output_dir, exist_ok=True)
-                
-            # Save as animated WebP
-            webp.save_images(
-                frames, 
-                webp_path, 
-                fps=output_fps, 
-                quality=self.quality
-            )
-                        
+
+            # Save the final buffer to the output file
+            logger.info("Writing final WebP to '%s'... ", webp_path)
+            with open(webp_path, 'wb') as f:
+                f.write(buffer.getvalue())
             return True
             
         except Exception as e:
-            raise IOError(f"Conversion failed: {e}")
+            raise IOError(f"Final WebP saving failed: {e}")
         
         finally:
             end_time = time.monotonic()
             duration = end_time - start_time
-            print(f"⌛ Total time taken: {duration:.2f} seconds.")
+            logger.info("Total time taken: %.2f seconds.", duration)
 
 def convert_tgs_to_webp(tgs_path: str, webp_path: str, 
                        width: int = -1, height: int = -1, 
-                       quality: int = 80,
+                       quality: int = 40,
+                       frame_cap: bool = True,
+                       max_frames: int = 30,
+                       max_size: int = None,
                        keep_aspect: bool = True,
                        allow_upscale: bool = True,
                        pad: bool = True,
                        fps: float = 30.0, 
-                       preserve_timing: bool = True) -> bool:
+                       preserve_timing: bool = True,
+                       compress_faster: bool = False
+                       ) -> bool:
     """
     Simple function to convert TGS to WebP with automatic timing preservation.
     
@@ -293,28 +486,35 @@ def convert_tgs_to_webp(tgs_path: str, webp_path: str,
         width: Output width in pixels (default: Original)
         height: Output height in pixels (default: Original)
         quality: WebP quality 0-100 (default: 80)
+        frame_cap: Whether to cap the number of frames (default: True)
+        max_frames: Maximum number of frames to render (default: 180). Ignored if frame cap is disabled or if max_size is set.
+        max_size: Maximum file size in kilobytes (default: None). This will compress the WebP by reducing quality and number of frames to meet the target size.
         keep_aspect: Preserve original aspect ratio (default True).
         allow_upscale: Allow enlarging smaller sources to meet target (default True).
         pad: When keep_aspect=True, pad with transparent canvas to fill target if True (default).
             If False, use cover+center-crop mode instead.
         fps: Target frames per second (ignored if preserve_timing=True, default: 30)
         preserve_timing: Automatically preserve original animation timing (default: True)
+        compress_faster: Compress faster by using a range max cap of 75% to max size for faster processing rather than rigid max_cap (default False).
         
     Returns:
         True if conversion successful, False otherwise       
     """
-    converter = TGSToWebPConverter(width, height, quality, keep_aspect, allow_upscale, pad, fps, preserve_timing)
+    converter = TGSToWebPConverter(width, height, quality, frame_cap, max_frames, max_size, keep_aspect, allow_upscale, pad, fps, preserve_timing, compress_faster)
     try:
         return converter.convert(tgs_path, webp_path)
     except Exception as e:
-        print(f"Error during conversion: {e}")
+        logger.error("Error during conversion: %s", e)
         return False
 
-
+# CLI usage
 if __name__ == "__main__":
-    # Example usage
     import sys, argparse
-    
+
+    logging.basicConfig(
+    level=logging.INFO,
+    format='%(levelname)s - %(message)s'
+    )
     
     parser = argparse.ArgumentParser(
         description="Convert TGS (Telegram animated stickers) to animated WebP.",
@@ -329,11 +529,17 @@ if __name__ == "__main__":
     # Optional arguments with default values
     parser.add_argument("--width", type=int, default=-1, help="Output width in pixels. Default: Original.")
     parser.add_argument("--height", type=int, default=-1, help="Output height in pixels. Default: Original.")
-    parser.add_argument("--quality", type=int, default=80, help="WebP quality (0-100). Default: 80.")
+    parser.add_argument("--quality", type=int, default=40, help="WebP quality (0-100). Default: 40.")
+    parser.add_argument("--max-frames", type=int, default=30, 
+                        help="Maximum number of frames to render. Default: 30.\n(Note: This is ignored if you disable frame capping).")
+    parser.add_argument("--max-size", type=int, default=None,
+                        help="Maximum file size in kilobytes. Default: None.\n(Note: This will compress the WebP file to meet the target size by reducing quality and number of frames).")
     parser.add_argument("--fps", type=float, default=30.0,
-                        help="Frames per second. \n(Note: This is ignored by default unless you disable timing preservation).")
+                        help="Frames per second. \n(Note: This is ignored by default unless you use --no-preserve-timing).")
 
     # arguments with a default a boolean flag
+    parser.add_argument("--no-frame-cap", dest="frame_cap", action="store_false",
+                        help="Disable capping the number of frames. By default frames are capped at 180.")
     parser.add_argument("--no-keep-aspect", dest="keep_aspect", action="store_false",
                         help="Disable preserving aspect ratio (stretch the image).")
     parser.add_argument("--no-upscale", dest="allow_upscale", action="store_false",
@@ -342,6 +548,8 @@ if __name__ == "__main__":
                         help="When keeping aspect, use crop instead of padding.")
     parser.add_argument("--no-preserve-timing", action="store_false", dest="preserve_timing",
                         help="Disable automatic timing preservation to use the manual FPS value.")
+    parser.add_argument("--fast", dest="compress_faster", action="store_true",
+                        help="Enable faster compression by using a range target of 75%% to max size. Disabled by default.")
 
     # Let argparse handle the arguments
     args = parser.parse_args()
@@ -353,16 +561,19 @@ if __name__ == "__main__":
         width=args.width,
         height=args.height,
         quality=args.quality,
+        frame_cap=args.frame_cap,
+        max_frames=args.max_frames,
+        max_size=args.max_size,
         keep_aspect=args.keep_aspect,
         allow_upscale=args.allow_upscale,
         pad=args.pad,
         fps=args.fps,
-        preserve_timing=args.preserve_timing
-
+        preserve_timing=args.preserve_timing,
+        compress_faster=args.compress_faster
     )
 
     if success:
-        print(f"✅ Successfully converted {args.input_file} to {args.output_file}")
+        logger.info("Successfully converted %s to %s", args.input_file, args.output_file)
     else:
-        print(f"❌ Failed to convert {args.input_file}")
+        logger.error("Failed to convert %s", args.input_file)
         sys.exit(1)
