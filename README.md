@@ -1,214 +1,199 @@
-# TGS to WebP Converter 🎞️✨
+# TGS to WebP Converter
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A handy and flexible Python tool to convert TGS (Telegram Animated Stickers) files into high-quality animated WebP format.
+A flexible Python tool to convert **TGS** (Telegram Animated Stickers) files into high-quality **animated WebP** format.
 
-The primary goal of this project is to provide a simple way to convert these animations while intelligently preserving the original timing and duration, so your animations don't look sped up or slowed down. It's perfect for developers, content creators, or anyone who wants to use TGS animations in web projects.
+TGS files are gzip-compressed Lottie JSON animations. This module renders them frame-by-frame with [rlottie](https://github.com/nicedayzhu/rlottie-python) and encodes the result as an animated WebP using [webp](https://github.com/anibali/pywebp), giving you full control over resolution, quality, timing, resize behavior, and file size.
 
-## 🚀 Features
+## Features
 
-- **😋 Easy Conversion**: Convert TGS to animated WebP with a single command or function call.
-- **🧠 Smart Timing Preservation**: Automatically adjusts FPS to match the original animation's duration.
-- **⚙️ Manual Control**: Option to disable automatic timing and set a manual FPS for full control.
-- **📦 Intelligent File Size Compression**: A special version of the script automatically adjusts quality and frame count to meet a file size target (e.g., under 500KB).
-- **🎨 Customizable Output**: Easily specify output resolution (`width`, `height`) and `quality`.
-- **💻 Dual Usage Mode**: Can be used as a command-line tool or imported as a module into your own Python projects.
-- **✌️ Three Flavors**:
-    1.  `tgs_to_webp.py`: **Performance-focused** version that limits animations to 180 frames to prevent high resource usage. Ideal for most stickers.
-    2.  `tgs_to_webp_no_frame_limits.py`: **Power-user** version that removes the 180-frame limit for extra-long animations. Use with caution!
-    3.  `tgs_to_webp_with_file_size_restriction.py`: **Size-focused** version that intelligently compresses the output to stay under a specific file size cap. Perfect for platforms with strict file size limits.
+- **Easy Conversion** — Convert TGS to animated WebP with a single function call or CLI command.
+- **Smart Timing Preservation** — Automatically adjusts output FPS to match the original animation's duration, so playback speed is preserved.
+- **Manual FPS Control** — Disable automatic timing to set a custom FPS for full control over playback speed.
+- **Configurable Frame Capping** — Limits output to 180 frames by default to save resources; easily adjust the cap or disable it entirely for long animations.
+- **Intelligent File Size Compression** — Automatically adjusts quality and frame count to meet a target file size (e.g., ≤ 256 KB), with an optional fast mode.
+- **Flexible Resize Modes** — Easily specify the output resolution and resize behavior (padding, cropping, stretching, etc.).
+- **Dual Usage** — Works as a CLI tool *and* as an importable Python module. Use the simple `convert_tgs_to_webp()` function or the `TGSToWebPConverter` class for batch work.
 
 ---
 
-## 🔧 Setup & Installation
+## Setup & Installation
 
-Before you can use the converter, you'll need to set up your environment.
+### 1. System Dependencies
 
-### 1. System Dependencies (Cairo)
+This tool uses `rlottie_python`, which requires the **Cairo** graphics library.
 
-This tool uses `rlottie_python`, which relies on the Cairo graphics library to render animation frames. You'll need to install it on your system first.
-
--   **On Fedora (and other RHEL-based systems):**
-    ```bash
-    sudo dnf install cairo-devel pkg-config python3-devel gcc
-    ```
--   **On Debian/Ubuntu:**
+-   **Debian / Ubuntu:**
     ```bash
     sudo apt-get install libcairo2-dev pkg-config python3-dev gcc
     ```
--   **On macOS (using Homebrew):**
+-   **Fedora / RHEL:**
+    ```bash
+    sudo dnf install cairo-devel pkg-config python3-devel gcc
+    ```
+-   **macOS (Homebrew):**
     ```bash
     brew install cairo pkg-config
     ```
 
-### 2. Clone the Repository
+### 2. Clone & Install
 
-Get the project files by cloning the repository:
 ```bash
 git clone https://github.com/not-right-now/tgs_to_webp.git
 cd tgs_to_webp
-```
 
-### 3. Create and Activate a Virtual Environment
+# Create and activate a virtual environment (recommended)
+python3 -m venv venv
+source venv/bin/activate        # macOS / Linux
+# venv\Scripts\activate.bat     # Windows CMD
+# venv\Scripts\Activate.ps1     # Windows PowerShell
 
-It's highly recommended to use a virtual environment to keep project dependencies isolated.
-
-1.  **Create the environment** (run this inside the project folder):
-    ```bash
-    python3 -m venv venv
-    ```
-
-2.  **Activate the environment**:
-    -   **On macOS and Linux:**
-        ```bash
-        source venv/bin/activate
-        ```
-    -   **On Windows (Command Prompt):**
-        ```bash
-        venv\Scripts\activate.bat
-        ```
-    -   **On Windows (PowerShell):**
-        ```powershell
-        venv\Scripts\Activate.ps1
-        ```
-    > You will know the environment is active when you see `(venv)` at the beginning of your command prompt.
-
-
-
-### 4. Install Python Packages
-
-Install the required Python libraries using the `requirements.txt` file:
-```bash
+# Install dependencies
 pip install -r requirements.txt
 ```
 
 ---
 
-## 💡 How to Use
-
-You can use this tool directly from your terminal or import it into your Python scripts.
+## How to Use
 
 ### As a Command-Line Tool
 
-This is the quickest way to convert a single file. The arguments are the same for all script versions.
-
-**Basic Usage:**
+**Basic usage:**
 ```bash
-python tgs_to_webp.py path/to/your/sticker.tgs path/to/your/output.webp
+python tgs_to_webp.py sticker.tgs output.webp
 ```
 
-**Command-Line Arguments:**
-
-| Argument              | Description                                                                                             | Default    |
-| --------------------- | ------------------------------------------------------------------------------------------------------- | ---------- |
-| `input_file`          | (Required) Path to the input TGS file.                                                                  | -          |
-| `output_file`         | (Required) Path for the output WebP file.                                                               | -          |
-| `--width`             | Output width in pixels.                                                                                 | `Original` |
-| `--height`            | Output height in pixels.                                                                                | `Original` |
-| `--quality`           | WebP quality (0-100). Higher is better.                                                                 | `80`       |
-| `--fps`               | Frames per second. **Ignored by default** in timing-preserving scripts.                                 | `30`       |
-| `--no-preserve-timing`| (Only in `tgs_to_webp.py`) A flag to disable automatic timing preservation and use the manual `--fps` value instead. | `False`    |
-
-**Example with custom settings:**
+**With custom settings:**
 ```bash
-python tgs_to_webp.py "demo_inp/AnimatedSticker.tgs" "demo_out/custom.webp" --width 256 --height 256 --quality 95
+# Custom resolution and quality
+python tgs_to_webp.py sticker.tgs output.webp --width 256 --height 256 --quality 90
+
+# Compress to fit under 256 KB
+python tgs_to_webp.py sticker.tgs output.webp --max-size 256
+
+# Faster compression (allows 75%-100% of target)
+python tgs_to_webp.py sticker.tgs output.webp --max-size 256 --fast
+
+# Render all frames (no 180-frame cap)
+python tgs_to_webp.py sticker.tgs output.webp --no-frame-cap
+
+# Manual FPS (disables timing preservation)
+python tgs_to_webp.py sticker.tgs output.webp --fps 15 --no-preserve-timing
+
+# Crop instead of padding when resizing
+python tgs_to_webp.py sticker.tgs output.webp --width 256 --height 128 --crop
 ```
+
+**Full CLI reference:**
+
+| Argument | Description | Default |
+|---|---|---|
+| `input_file` | *(required)* Path to the input TGS file. | — |
+| `output_file` | *(required)* Path for the output WebP file. | — |
+| `--width` | Output width in pixels (`-1` = original). | `-1` |
+| `--height` | Output height in pixels (`-1` = original). | `-1` |
+| `--quality` | WebP quality (0–100). Higher = better but larger. | `40` |
+| `--max-frames` | Maximum frames to render (ignored if `--no-frame-cap`). | `180` |
+| `--max-size` | Target file size cap in **KB**. Enables smart compression. | `None` |
+| `--fps` | Frames per second (ignored unless `--no-preserve-timing`). | `30` |
+| `--no-frame-cap` | Disable the frame cap — render every frame. | off |
+| `--no-keep-aspect` | Stretch to fit target dimensions (ignore aspect ratio). | off |
+| `--no-upscale` | Prevent enlarging sources smaller than the target. | off |
+| `--crop` | When keeping aspect ratio, cover + center-crop instead of padding. | off |
+| `--no-preserve-timing` | Use the manual `--fps` value instead of auto-timing. | off |
+| `--fast` | Allow 75%–100% of `--max-size` for faster compression. | off |
+
+---
 
 ### As a Python Module
 
-Import the converter into your project for more programmatic control.
+#### Quick conversion
 
-**Simple Usage (Recommended):**
 ```python
 from tgs_to_webp import convert_tgs_to_webp
 
-success = convert_tgs_to_webp('input.tgs', 'output.webp', quality=90)
+# Simplest — all defaults
+convert_tgs_to_webp('sticker.tgs', 'output.webp')
 
-if success:
-    print("🎉 Conversion successful!")
-else:
-    print("😢 Conversion failed.")
+# Custom resolution & quality
+convert_tgs_to_webp('sticker.tgs', 'output.webp',
+                    width=256, height=256, quality=90)
+
+# Compress to ≤ 256 KB
+convert_tgs_to_webp('sticker.tgs', 'output.webp',
+                    max_size=256)
+
+# All frames, no cap
+convert_tgs_to_webp('sticker.tgs', 'output.webp',
+                    frame_cap=False)
+
+# Manual FPS
+convert_tgs_to_webp('sticker.tgs', 'output.webp',
+                    fps=15, preserve_timing=False)
 ```
 
-**Advanced Usage (Class-based):**
-For more complex scenarios, you can use the `TGSToWebPConverter` class. This is useful if you want to convert multiple files with the same settings.
+#### Class-based (batch / reuse)
+
 ```python
 from tgs_to_webp import TGSToWebPConverter
 
-# Configure the converter once
+# Configure once
 converter = TGSToWebPConverter(
     width=512,
     height=512,
-    quality=85,
-    preserve_timing=True # This is the default
+    quality=70,
+    max_size=512,           # ≤ 512 KB
+    preserve_timing=True,   # keep original speed
 )
 
-# Reuse it for multiple files
-converter.convert('sticker1.tgs', 'output1.webp')
-converter.convert('sticker2.tgs', 'output2.webp')
+# Convert many files with the same settings
+converter.convert('sticker1.tgs', 'out1.webp')
+converter.convert('sticker2.tgs', 'out2.webp')
+converter.convert('sticker3.tgs', 'out3.webp')
 ```
+
+#### Full parameter reference — `convert_tgs_to_webp()`
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `tgs_path` | `str` | *(required)* | Path to input TGS file. |
+| `webp_path` | `str` | *(required)* | Path for output WebP file. |
+| `width` | `int` | `-1` | Output width (`-1` = original). |
+| `height` | `int` | `-1` | Output height (`-1` = original). |
+| `quality` | `int` | `40` | WebP quality (0–100). |
+| `frame_cap` | `bool` | `True` | Whether to cap the number of rendered frames. |
+| `max_frames` | `int` | `180` | Frame cap limit (ignored when `frame_cap=False`). |
+| `max_size` | `int\|None` | `None` | Target file size in **KB**. Enables smart compression. |
+| `keep_aspect` | `bool` | `True` | Preserve aspect ratio when resizing. |
+| `allow_upscale` | `bool` | `True` | Allow enlarging smaller sources to meet target. |
+| `pad` | `bool` | `True` | When `keep_aspect=True`: pad with transparency (`True`) or cover+crop (`False`). |
+| `fps` | `float` | `30.0` | Manual FPS (only used when `preserve_timing=False`). |
+| `preserve_timing` | `bool` | `True` | Auto-adjust FPS to keep original animation duration. |
+| `compress_faster` | `bool` | `False` | Accept 75%–100% of `max_size` for faster compression. |
+
+**Returns:** `True` on success, `False` on failure.
 
 ---
 
-## 📦 The "File Size Restricted" Version
+## Running the Demo
 
-Do you need your final WebP file to be under a certain size (e.g., 500KB)? The `tgs_to_webp_with_file_size_restriction.py` script is your solution! It uses a smart optimization algorithm to find the best combination of frame count and quality to meet a target file size.
+A comprehensive demo script ([`demo.py`](demo.py)) is included to showcase every feature.
 
-**🚨 Warning:** This process can be slower than the other scripts because it has to pre-render all frames and then run multiple compression tests to find the optimal result.
+1.  **Input files:** The `demo_inp/` directory already contains sample `.tgs` files. Feel free to add your own!
 
-To use it, simply point to the correct script file:
-
-**Command-Line:**
-```bash
-python tgs_to_webp_with_file_size_restriction.py your_sticker.tgs your_output.webp
-```
-
-**Python Module:**
-```python
-# Import from the size-restricted script
-from tgs_to_webp_with_file_size_restriction import convert_tgs_to_webp
-
-# The rest of your code remains the same!
-success = convert_tgs_to_webp('animation.tgs', 'output_under_500kb.webp')
-```
-
----
-
-## ⚠️ The "No Frame Limits" Version
-
-For animations that are longer than 180 frames, the standard `tgs_to_webp.py` will cap the output to save memory and CPU time. If you absolutely need to render every single frame of a long animation, you can use `tgs_to_webp_no_frame_limits.py`.
-
-**🚨 Warning:** Converting animations with a very high frame count can be resource-intensive and may consume a lot of RAM and CPU. Use this version wisely!
-
-To use it, simply change your script file or import statement:
-
-```python
-# Instead of from tgs_to_webp import ...
-from tgs_to_webp_no_frame_limits import convert_tgs_to_webp
-
-# The rest of your code remains the same!
-success = convert_tgs_to_webp('long_animation.tgs', 'long_output.webp')
-```
-
----
-
-## 🎬 Running the Demo
-
-A comprehensive demo script (`demo.py`) is included to showcase all the features.
-
-1.  **Check TGS files**: The `demo_inp/` directory already contains a couple of sample `.tgs` files to get you started. Feel free to add your own!
-
-2.  **Run the script**:
+2.  **Run:**
     ```bash
     python demo.py
     ```
-    > **Note:** The demo script will first clear the `demo_out/` directory to ensure a fresh start for each run.
+    > The demo clears `demo_out/` at the start of each run for a fresh start.
 
-3.  **Check the results**: The script will run through various conversion scenarios and place all the output `.webp` files in the `demo_out/` directory for you to inspect.
+3.  **Inspect results:** All output `.webp` files are written to `demo_out/` with descriptive names like `resolution_256x256_Q70.webp`, `compress_256kb_strict.webp`, `resize_crop.webp`, etc.
+
+The demo covers: basic conversion, custom resolution & quality, frame capping, file size compression, resize modes (pad / crop / stretch / no-upscale), manual timing, and class-based batch usage.
 
 ---
 
-## 📜 License
+## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
