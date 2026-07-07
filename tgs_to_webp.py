@@ -406,7 +406,6 @@ class TGSToWebPConverter:
         
         capped_frames = len(final_frames)
 
-        # Calculate final FPS based on whether user wants to preserve timing or not.
         if self.preserve_timing:
             logger.info("Preserving original duration")
         else:
